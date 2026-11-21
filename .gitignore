@@ -8,3 +8,6 @@ data/
 *.db-shm
 .env
 *.tsbuildinfo
+
+# Notas personales de Claude Code (no se suben)
+CLAUDE.local.md
