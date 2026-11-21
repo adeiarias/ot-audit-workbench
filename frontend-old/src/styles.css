@@ -1,0 +1,61 @@
+:root { font-family: system-ui, sans-serif; color-scheme: light dark; }
+body { margin: 0; }
+main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+.card { border: 1px solid #8884; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; width: 100%; box-sizing: border-box; }
+form.card { display: grid; gap: .75rem; }
+label { display: grid; gap: .25rem; font-size: .9rem; }
+label.inline { display: flex; gap: .5rem; align-items: center; }
+input, select, textarea, button { font: inherit; padding: .4rem; }
+table { border-collapse: collapse; }
+th, td { text-align: left; padding: .4rem; border-bottom: 1px solid #8884; }
+.error { color: #c0392b; }
+.muted { color: #888; font-size: .9rem; margin: 0; }
+pre { white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow: auto; margin: .5rem 0 0; font-size: .8rem; }
+.graph { height: 480px; padding: 0; }
+.legend { margin-bottom: .5rem; }
+.tabs { display: flex; gap: .25rem; margin: 1rem 0; border-bottom: 1px solid #8884; }
+.tabs button { border: 0; background: none; border-bottom: 3px solid transparent; cursor: pointer; color: inherit; }
+.tabs button.active { border-bottom-color: #2b7de9; font-weight: 600; }
+.dropzone { border-style: dashed; }
+.dropzone.over { border-color: #2b7de9; background: #2b7de91a; }
+.evgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
+.evcard { margin: 0; display: grid; gap: .5rem; align-content: start; }
+.evcard img { width: 100%; height: 150px; object-fit: contain; background: #8881; border-radius: 4px; }
+.evmeta { display: flex; justify-content: space-between; align-items: center; }
+.badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .8rem; font-weight: 600; color: #fff; white-space: nowrap; }
+.r-critical { background: #7b1020; } .r-high { background: #c2410c; } .r-medium { background: #a16207; }
+.r-low { background: #2f7d32; } .r-none, .r-sin { background: #6b7280; }
+.editor { display: grid; gap: .75rem; }
+.row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: end; }
+.row .grow { flex: 1; min-width: 220px; }
+.ratingbox { display: grid; gap: .25rem; }
+fieldset { border: 1px solid #8884; border-radius: 6px; display: grid; gap: .4rem; }
+textarea { font-family: ui-monospace, monospace; font-size: .85rem; }
+tr.click { cursor: pointer; } tr.click:hover { background: #8881; }
+.evmini { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .4rem; }
+.evmini img { height: 24px; vertical-align: middle; }
+button.danger { color: #c0392b; margin-left: auto; }
+.evcard { min-width: 0; }
+.evcard input, .evcard select { width: 100%; box-sizing: border-box; min-width: 0; }
+.evmeta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.evmeta button { flex-shrink: 0; margin-left: .5rem; }
+table.findings { table-layout: fixed; }
+table.findings td { overflow: hidden; text-overflow: ellipsis; }
+table.findings th:nth-child(1) { width: 9%; } table.findings th:nth-child(2) { width: 33%; }
+table.findings th:nth-child(3) { width: 17%; } table.findings th:nth-child(4) { width: 22%; }
+table.findings th:nth-child(5) { width: 7%; } table.findings th:nth-child(6) { width: 12%; }
+.chat { display: grid; gap: .75rem; margin: 1rem 0; }
+.bubble { padding: .6rem .9rem; border-radius: 10px; max-width: 88%; }
+.bubble.user { justify-self: end; background: #2b7de922; }
+.bubble.assistant { justify-self: start; background: #8881; }
+.bubble.error { justify-self: start; background: #c0392b22; color: #c0392b; }
+.btext { white-space: pre-wrap; word-break: break-word; }
+.call { margin: .6rem 0 0; display: grid; gap: .35rem; }
+.call.pending { border-color: #f5c518; background: #f5c51814; }
+.call.failed, .call.denied { border-color: #c0392b66; }
+.chatinput { display: flex; gap: .75rem; align-items: end; }
+.chatinput textarea { flex: 1; font-family: inherit; font-size: 1rem; }
+button.linkish { border: 0; background: none; color: #2b7de9; cursor: pointer; padding: 0; text-align: left; }
+.editor .card textarea { width: 100%; box-sizing: border-box; display: block; margin: .4rem 0 .25rem; }
+.editor .card > span.muted { display: block; }
+.editor .card input:not([type="checkbox"]) { box-sizing: border-box; max-width: 100%; }

@@ -1,0 +1,44 @@
+# Servidores MCP de terceros. DENY-BY-DEFAULT: solo existen las herramientas que se listan aquí.
+#
+# Por herramienta (todas obligatorias salvo `llm`):
+#   active:       true = genera tráfico hacia un objetivo (aprobación humana siempre). false = pasiva (offline).
+#   allowed_args: lista cerrada de argumentos; cualquier otro se rechaza (también rutas de salida, `sudo`, flags crudos…).
+#   target_arg:   argumento con el objetivo de red → se valida contra el alcance en código (herramientas de red).
+#   capture_arg:  argumento del servidor con la ruta de la captura → el auditor/asistente indican `capture_id` y la app
+#                 resuelve la ruta real, confinada a la campaña (herramientas que leen pcaps). Excluyente con target_arg.
+#   llm:          false = solo el auditor desde la UI (por defecto true). Úsalo si la salida lleva secretos o payloads.
+# `command` es una lista (sin shell). El servidor arranca con un entorno mínimo: solo recibe lo que pongas en `env`.
+# Si el ejecutable no existe (p. ej. fuera de Docker), el servidor se omite con un aviso.
+servers:
+  wireshark:  # https://github.com/bx33661/Wireshark-MCP (MIT), versión fijada en backend/Dockerfile
+    command: [/opt/mcp/wireshark/bin/wireshark-mcp, serve]
+    tools:
+      # --- Resumen y estadísticas
+      wireshark_get_file_info:            {active: false, capture_arg: pcap_file, allowed_args: [pcap_file]}
+      wireshark_quick_analysis:           {active: false, capture_arg: pcap_file, allowed_args: [pcap_file]}
+      wireshark_stats_protocol_hierarchy: {active: false, capture_arg: pcap_file, allowed_args: [pcap_file]}
+      wireshark_stats_endpoints:          {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, type]}
+      wireshark_stats_conversations:      {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, type]}
+      wireshark_stats_expert_info:        {active: false, capture_arg: pcap_file, allowed_args: [pcap_file]}
+      wireshark_analyze_tcp_health:       {active: false, capture_arg: pcap_file, allowed_args: [pcap_file]}
+      wireshark_analyze_protocol:         {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, protocol, limit]}
+      wireshark_get_packet_list:          {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, limit, offset, display_filter]}
+      # --- Detección
+      wireshark_detect_arp_spoofing:      {active: false, capture_arg: pcap_file, allowed_args: [pcap_file]}
+      wireshark_detect_beaconing:         {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, min_connections, max_jitter]}
+      wireshark_detect_dns_tunnel:        {active: false, capture_arg: pcap_file, allowed_args: [pcap_file]}
+      wireshark_detect_dos_attack:        {active: false, capture_arg: pcap_file, allowed_args: [pcap_file]}
+      wireshark_detect_exfiltration:      {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, limit]}
+      wireshark_detect_port_scan:         {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, threshold]}
+      wireshark_detect_protocol_anomalies: {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, limit]}
+      wireshark_extract_dns_queries:      {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, limit]}
+      wireshark_extract_fingerprints:     {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, limit]}
+      # --- Muestran contenido/payloads o credenciales: solo el auditor (no se envían al modelo)
+      wireshark_extract_credentials:      {active: false, capture_arg: pcap_file, allowed_args: [pcap_file], llm: false}
+      wireshark_extract_http_requests:    {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, limit], llm: false}
+      wireshark_follow_stream:            {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, stream_index, protocol, output_mode, limit_lines, offset_lines, search_content], llm: false}
+      wireshark_get_packet_details:       {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, frame_number, layers], llm: false}
+      wireshark_search_packets:           {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, match_pattern, search_type, limit, scope], llm: false}
+      wireshark_extract_fields:           {active: false, capture_arg: pcap_file, allowed_args: [pcap_file, fields, display_filter, limit, offset], llm: false}
+      # Excluidas a propósito (no listadas = denegadas): wireshark_capture (captura en vivo), merge/filter_save/editcap_*/text2pcap/
+      # extract_frames/export_objects/yara_scan (escriben ficheros), decrypt_* (claves/passphrases), index (SQL libre), case, geoip_enrich (red).

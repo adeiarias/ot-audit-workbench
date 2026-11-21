@@ -1,0 +1,43 @@
+# Audit Platform — contexto para Claude
+
+Plataforma **local** para gestionar campañas de auditoría de seguridad (OT/IoT/Web/Mobile/Red). Un solo auditor, en su portátil, datos 100 % locales. Habla español: UI, mensajes y comentarios van en español. Detalles de uso para humanos en `README.md`.
+
+## Estructura
+- `backend/` — FastAPI + SQLAlchemy + SQLite (WAL). `app/routers/` (API), `app/llm/` (chat/agente + proveedores), `app/report/` (informes), `mcp_servers/` (nmap, modbus, tshark: MCP stdio **independientes de `app/`**; `pcap_protocols.py` decodifica HTTP/MQTT/Modbus/S7/FTP para tshark), `scripts/lo_convert.py` (DOCX→PDF con el `python3` del sistema), `tests/`.
+- `frontend/` — React + TS + Vite 5 + **Tailwind 3.4** (Node 18: Tailwind 4 y Vite 6+ no valen), react-router, recharts (gráficos), Cytoscape (mapa). `src/App.tsx` = rutas (`/campaigns/:id/{tools,assets,captures,map,findings,evidence,assistant,report}`); `features/campaign-context.tsx` carga TODO lo de una campaña y se actualiza por WebSocket; componentes base estilo shadcn en `components/ui`; temas en `styles/themes.css` (generado: presets de «Studio Admin» MIT + preset propio «Audit» con acento cian, colores como canales oklch). Los paneles `features/legacy/*` (capturas, mapa, hallazgos, evidencias, informe) aún usan HTML suelto dentro de `.legacy` (compat en `globals.css`): migrarlos a componentes cuando se toquen.
+- `frontend-old/` — el frontend anterior (solo respaldo; se puede borrar).
+- `data/` — ignorado por git (no es repo git todavía): `audit.db` + `data/campaigns/<id>/{pcaps,evidence,reports}`.
+- `samples/demo_ot.pcap` — pcap sintético de ejemplo (generador en `backend/tests/pcap_factory.py`).
+
+## Comandos
+```bash
+cd backend && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --reload   # API :8000
+cd frontend && npm run dev                                                # web :5173 (proxy /api; API_TARGET cambia el destino)
+cd backend && .venv/bin/python -m pytest -q -p no:logging                 # ~18 s, 100+ tests
+cd frontend && npm run build                                              # tsc + vite
+```
+Variables: `AUDIT_DATA_DIR`, `AUDIT_ALLOWED_HOSTS/ORIGINS` (API local), `AUDIT_LLM_*` (proveedor LLM: ver README).
+
+## Invariantes — no romper
+- **Alcance**: `scope.target_in_scope` se aplica en código (nunca solo en prompt). Solo se ejecutan herramientas de `mcp_client.TOOL_POLICY` (allowlist); las `internal` (p. ej. `pcap_flows`) no se pueden lanzar por la API de runs.
+- **LLM**: `llm_enabled` apagado por defecto por campaña. Todo lo que sale pasa por `llm/redaction.Redactor` (IPs/MAC/hostnames → `IP-0001`…, secretos → `[REDACTED]`); los argumentos que devuelve el modelo se **restauran antes** de validar alcance y ejecutar. Las herramientas activas **siempre** requieren aprobación humana y el alcance se revalida al aprobar.
+- **Historial del chat**: `ChatMessage.api_content` se guarda y reenvía **verbatim, append-only** (los bloques `thinking` de Claude y el `reasoning_content` de DeepSeek lo exigen). Una conversación no se mezcla entre proveedores (`provider_mismatch`).
+- **API local**: `security.py` (Host/Origin). Evidencias solo raster (sin SVG); rutas de ficheros confinadas a `data/campaigns/`; el servidor MCP de tshark falla cerrado sin `AUDIT_CAPTURES_ROOT`.
+- **Perfiles de LLM**: `client.resolve(db, campaign)` = perfil elegido → perfil predeterminado → entorno (`AUDIT_LLM_*`). Las claves se guardan **en texto plano** en `llm_profiles.api_key` (decisión del usuario), NUNCA salen por la API (solo `has_key`/`key_hint`) ni en mensajes de error, y `db.harden_permissions()` deja la BD y sus copias en 0600. Una prueba de conexión no lleva datos de campañas.
+- **Alcance**: se valida con `scope.parse_scope` (errores con nº de línea; un TLD numérico NO es hostname → `10.0.0.256` es error). Cada cambio queda en `scope_changes` y las acciones del asistente pendientes que queden fuera se rechazan solas (`agent.invalidate_out_of_scope_calls`); al aprobar se revalida igualmente.
+- **Contenido de protocolo**: `pcap_flows` hace una 2.ª pasada de tshark (filtro `http || mqtt || mbtcp || s7comm || ftp`) y devuelve `events` agregados por (flujo, resumen) → tabla `flow_events` (`FlowEvent`, se rehace al reanalizar; cae con la captura). Las credenciales en claro se guardan y muestran tal cual (decisión del usuario) con `secret=True`. Los eventos **no se exponen al agente/LLM** (no hay herramienta que los lea); si se añade una, debe pasar por `Redactor`.
+- **MCP de terceros** (`backend/mcp_servers.yaml`, `AUDIT_MCP_MANIFEST`): deny-by-default. Cada herramienta declara `active`, `allowed_args` (lista cerrada, obligatoria) y `target_arg` (alcance) o `capture_arg` (el auditor/modelo dan `capture_id`; `mcp_client.bind_arguments` resuelve la ruta real de la campaña y rechaza rutas crudas/otras campañas). `llm: false` = solo desde la UI (salidas con payloads/credenciales). Se lanzan con entorno mínimo (no heredan las claves de la app), con salida limitada y un servidor roto se omite sin romper el resto. Las herramientas pasivas sobre capturas las ejecuta el agente **sin aprobación** (offline); las activas siguen exigiéndola. Un manifiesto inválido no se aplica a medias. Versión fijada en el Dockerfile (venv propio en `/opt/mcp/`).
+- **BD**: no hay Alembic. Columnas nuevas en tablas existentes → `app/migrations.py` (`COLUMNS`, hace copia `audit.db.bak-*` antes); tablas nuevas → `create_all`.
+- **Informe Word**: `docx_builder` sanea caracteres inválidos en XML (ANSI/NUL de salidas de terminal); la maquetación vive solo ahí. **No hay plantilla Word** (maquetación propia: Arial, acento cian, sin logotipo); si aparece una, adaptar ese módulo.
+
+## Estado
+Hecho: campañas (alcance editable con historial) · perfiles de LLM por campaña · rediseño de la interfaz (sidebar, temas, Resumen) · MCPs mock (nmap, modbus, tshark) · capturas + mapa lógico en vivo (WebSocket) · evidencias y hallazgos · chat/agente con aprobación · informes (DOCX/PDF/MD + borradores IA) · proveedores LLM (Anthropic, DeepSeek, LiteLLM, OpenAI-compatible).
+**Docker**: la imagen usa Debian trixie (tshark 4.4): con bookworm (tshark 4.0) `_ws.col.protocol` sale vacío y todos los flujos quedarían como «TCP». Los tests se ejecutan dentro de la imagen montando `tests/`, `app/`, `mcp_servers/` (la imagen no los trae); no hay `.venv` ni node en WSL.
+**Nunca probado con servicios reales** (sin claves en desarrollo): llamada a Anthropic (incl. `fallbacks` de rechazo), DeepSeek y LiteLLM reales; solo con dobles y un servidor OpenAI-compatible local.
+Ideas pendientes: sustituir nmap/modbus por MCPs públicos (descartado de momento: el nmap público acepta flags crudos y sudo; ver candidatos en el historial) · más servidores de terceros en el manifiesto (p. ej. Modbus de solo lectura: ezhuk/modbus-mcp, kukapay/modbus-mcp) · fijar hashes (`--require-hashes`) del MCP de terceros · protocolos: puertos no estándar («decode as»), crear hallazgo desde una credencial en claro, más protocolos · migrar los paneles `features/legacy` a componentes (el usuario NO pidió tablas con orden/paginación, Ctrl+K ni toasts) · pasar a Tailwind 4 si se actualiza Node a 20+ · cálculo CVSS desde el vector · mapa de nivel 2 (ARP/LLDP/PROFINET) · reordenar evidencias · exportar un hallazgo suelto a Markdown · MCPs públicos/propios configurables por YAML (el usuario lo pospuso) · Alembic.
+
+## Trabajar aquí (gotchas)
+- **El usuario suele tener su backend (:8000) y Vite (:5173) arrancados sobre `data/`.** Para probar: puertos 8100/5273, `AUDIT_DATA_DIR` aislado (scratchpad), `AUDIT_ALLOWED_HOSTS=127.0.0.1` y `AUDIT_ALLOWED_ORIGINS`; comprobar con `ss -ltnp` antes; matar solo PIDs propios por puerto (`pkill -f` mata el propio shell); no tocar `data/audit.db` ni sus campañas.
+- **Revisión de UI**: Playwright **1.49.1** (la última con Node 18) instalado en el scratchpad con `PLAYWRIGHT_BROWSERS_PATH` dentro del scratchpad (`npm i playwright@1.49.1 && npx playwright install firefox`); guion que recorre pantallas, diálogos, temas y móvil y comprueba flujos con asserts. Se necesita backend aislado (8100) + `API_TARGET=http://127.0.0.1:8100 vite --port 5273` con datos sembrados. Al desarrollar una UI grande, hacerlo en una carpeta aparte (`frontend-v2`): el Vite del usuario recarga en vivo y se le rompería la pestaña.
+- **Tests**: `tests/conftest.py` trae `FakeLLM` y la fixture `llm` (parchea `client.create_message`); cada test usa BD y carpeta temporales. El test de PDF necesita LibreOffice + UNO y poppler (se omite si faltan).
+- Plan histórico (desfasado): `~/.claude/plans/hola-quiero-hacer-una-bright-leaf.md`.

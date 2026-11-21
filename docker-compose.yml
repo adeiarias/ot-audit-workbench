@@ -1,0 +1,50 @@
+# Audit Platform: backend (FastAPI) + frontend (nginx).  Uso:  docker compose up -d --build   →  http://127.0.0.1:8080
+# La app NO tiene autenticación: los puertos se publican solo en 127.0.0.1. No los abras a la red.
+services:
+  # Si ./data no existía, Docker la crea como root y el backend (uid ${UID:-1000}) no podría abrir SQLite. Esto la deja a su nombre.
+  init-data:
+    image: alpine:3
+    user: "0:0"
+    command: chown ${UID:-1000}:${GID:-1000} /data
+    volumes:
+      - ./data:/data
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        WITH_PDF: ${WITH_PDF:-1}   # 0 = sin LibreOffice (sin exportar a PDF, imagen mucho más pequeña)
+        UID: ${UID:-1000}          # mismo uid que tu usuario para que ./data sea tuyo
+        GID: ${GID:-1000}
+    restart: unless-stopped
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
+    env_file:
+      - path: .env                 # AUDIT_LLM_* y claves (opcional; ver .env.example). Requiere Compose ≥ 2.24
+        required: false
+    environment:
+      AUDIT_DATA_DIR: /data
+      AUDIT_ALLOWED_HOSTS: 127.0.0.1,localhost,backend
+      AUDIT_ALLOWED_ORIGINS: http://127.0.0.1:8080,http://localhost:8080
+    volumes:
+      - ./data:/data               # audit.db + campañas (pcaps, evidencias, informes)
+    # nmap con SYN scan / ARP necesita estas capacidades. Para auditar la LAN real, usa además
+    # `network_mode: host` en lugar de la red de Compose (y entonces el frontend debe apuntar a 127.0.0.1:8000).
+    cap_add: [NET_RAW, NET_ADMIN]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    expose: ["8000"]
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:80"
