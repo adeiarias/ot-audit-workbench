@@ -361,6 +361,7 @@ export const api = {
   flowEvents: (id: number, e: { src: string; dst: string; transport: string; port: number }) =>
     req<FlowEvent[]>(`/api/campaigns/${id}/events?${new URLSearchParams({ src: e.src, dst: e.dst, transport: e.transport, port: String(e.port) })}`),
   findingFromEvent: (eventId: number) => req<Finding>(`/api/events/${eventId}/finding`, { method: "POST" }),
+  cvssScore: (vector: string) => req<{ score: number; rating: string }>(`/api/cvss/score?${new URLSearchParams({ vector })}`),
   findings: (id: number) => req<Finding[]>(`/api/campaigns/${id}/findings`),
   createFinding: (id: number, f: Partial<FindingInput>) =>
     req<Finding>(`/api/campaigns/${id}/findings`, { method: "POST", body: JSON.stringify(f) }),

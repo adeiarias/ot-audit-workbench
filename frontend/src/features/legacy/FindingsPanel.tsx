@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, Asset, Evidence, evidenceUrl, Finding, FindingInput, FindingPhase, FindingStatus } from "@/lib/api";
 import { RatingBadge as Badge } from "@/components/ui/badge";
 import { findingLabel } from "./EvidencePanel";
@@ -25,7 +25,17 @@ export function Editor({ campaignId, finding, findings, assets, evidence, onDone
   const [f, setF] = useState<FindingInput>(finding ? { ...EMPTY, ...finding } : EMPTY);
   const [score, setScore] = useState(finding?.cvss_score?.toString() ?? "");
   const [error, setError] = useState("");
+  const [computed, setComputed] = useState(false); // la puntuación sale del vector (CVSS 3.x); si no, es manual
   const poc = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const v = f.cvss_vector;
+    if (!v) return setComputed(false);
+    let alive = true;
+    const t = setTimeout(() => {
+      api.cvssScore(v).then((r) => { if (alive) { setScore(String(r.score)); setComputed(true); } }).catch(() => alive && setComputed(false));
+    }, 300);
+    return () => { alive = false; clearTimeout(t); };
+  }, [f.cvss_vector]);
   const set = <K extends keyof FindingInput>(k: K, v: FindingInput[K]) => setF((p) => ({ ...p, [k]: v }));
   const scoreNum = score.trim() === "" ? null : Number(score);
   const mine = finding ? evidence.filter((e) => e.finding_id === finding.id).sort((a, b) => a.position - b.position) : [];
@@ -76,11 +86,11 @@ export function Editor({ campaignId, finding, findings, assets, evidence, onDone
         </label>
       </div>
       <div className="row">
-        <label className="grow">Vector CVSS (el que tú has calculado)
+        <label className="grow">Vector CVSS (3.0/3.1: la puntuación se calcula sola)
           <input value={f.cvss_vector} placeholder="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" onChange={(e) => set("cvss_vector", e.target.value.trim())} />
         </label>
         <label>Puntuación
-          <input value={score} inputMode="decimal" placeholder="0–10" size={6} onChange={(e) => setScore(e.target.value)} />
+          <input value={score} inputMode="decimal" placeholder="0–10" size={6} readOnly={computed} title={computed ? "Calculada desde el vector" : "Manual (CVSS 4.0 o sin vector)"} onChange={(e) => setScore(e.target.value)} />
         </label>
         <div className="ratingbox"><span className="muted">Criticality</span><RatingBadge rating={ratingOf(scoreNum)} score={scoreNum} /></div>
       </div>

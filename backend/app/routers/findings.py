@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import events
+from .. import cvss, events
 from ..db import get_db
-from ..models import Asset, Campaign, Finding
+from ..models import Asset, Campaign, Finding, rating_from_score
 from ..schemas import FindingCreate, FindingOut, FindingUpdate
 
 router = APIRouter(prefix="/api", tags=["findings"])
@@ -59,6 +59,22 @@ def _check_dependency(db: Session, campaign_id: int, depends_on_id: int | None, 
         cur = db.get(Finding, cur.depends_on_id) if cur.depends_on_id else None
 
 
+@router.get("/cvss/score")
+def cvss_score(vector: str):
+    """Puntuación base calculada desde un vector CVSS 3.0/3.1 (para la vista previa del editor)."""
+    score = cvss.base_score(vector)
+    if score is None:
+        raise HTTPException(422, "Solo se calcula con vectores CVSS 3.0/3.1 completos (AV, AC, PR, UI, S, C, I, A); en CVSS 4.0 la puntuación es manual")
+    return {"score": score, "rating": rating_from_score(score)}
+
+
+def _sync_score(finding: Finding) -> None:
+    """El vector manda: si es calculable (3.0/3.1 completo), la puntuación sale de él. Si no, se conserva la manual."""
+    score = cvss.base_score(finding.cvss_vector) if finding.cvss_vector else None
+    if score is not None:
+        finding.cvss_score = score
+
+
 @router.get("/campaigns/{campaign_id}/findings", response_model=list[FindingOut])
 def list_findings(campaign_id: int, db: Session = Depends(get_db)):
     _campaign(db, campaign_id)
@@ -73,6 +89,7 @@ def create_finding(campaign_id: int, payload: FindingCreate, db: Session = Depen
     data = payload.model_dump(exclude={"asset_ids"})
     finding = Finding(campaign_id=campaign_id, **data)
     finding.assets = _resolve_assets(db, campaign_id, payload.asset_ids)
+    _sync_score(finding)
     db.add(finding)
     db.commit()
     events.publish(campaign_id, {"type": "changed"})
@@ -98,6 +115,7 @@ def update_finding(finding_id: int, payload: FindingUpdate, db: Session = Depend
         finding.assets = _resolve_assets(db, finding.campaign_id, asset_ids)
     for key, value in changes.items():
         setattr(finding, key, value)
+    _sync_score(finding)
     db.commit()
     events.publish(finding.campaign_id, {"type": "changed"})
     return finding
