@@ -1,5 +1,6 @@
 import cytoscape from "cytoscape";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, FlowEvent, Graph, GraphEdge, GraphNode } from "@/lib/api";
 
 const INDUSTRIAL = /modbus|s7|enip|cip|dnp3|bacnet|opc|profinet|iec|mms|goose|fins|melsec/i;
@@ -34,12 +35,28 @@ function detailText(e: FlowEvent): string {
 function EventsCard({ campaignId, edge }: { campaignId: number; edge: GraphEdge }) {
   const [events, setEvents] = useState<FlowEvent[] | null>(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState<number | null>(null);
+  const navigate = useNavigate();
+  const load = (live: () => boolean = () => true) =>
+    api.flowEvents(campaignId, edge).then((r) => live() && setEvents(r)).catch((e) => live() && setError(String(e)));
   useEffect(() => {
-    let live = true;
+    let alive = true;
     setEvents(null);
-    api.flowEvents(campaignId, edge).then((r) => live && setEvents(r)).catch((e) => live && setError(String(e)));
-    return () => { live = false; };
+    load(() => alive);
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId, edge.src, edge.dst, edge.transport, edge.port, edge.events]);
+  const createFinding = async (e: FlowEvent) => {
+    setBusy(e.id);
+    setError("");
+    try {
+      await api.findingFromEvent(e.id); // borrador sin identificador ni CVSS: se completa en Hallazgos
+      await load();
+    } catch (err) {
+      setError(String(err));
+    }
+    setBusy(null);
+  };
   return (
     <div className="card">
       <strong>Contenido · {edge.src} → {edge.dst} · {edge.protocol} {edge.transport}/{edge.port}</strong>
@@ -48,7 +65,7 @@ function EventsCard({ campaignId, edge }: { campaignId: number; edge: GraphEdge 
       {events && events.length === 0 && <p className="muted">No hay contenido de protocolo decodificado para este flujo (se interpretan HTTP, MQTT, Modbus, S7 y FTP en sus puertos estándar).</p>}
       {events && events.length > 0 && (
         <table>
-          <thead><tr><th>Tipo</th><th>Dir.</th><th>Operación</th><th>Detalle</th><th>Veces</th></tr></thead>
+          <thead><tr><th>Tipo</th><th>Dir.</th><th>Operación</th><th>Detalle</th><th>Veces</th><th>Hallazgo</th></tr></thead>
           <tbody>
             {events.map((e) => (
               <tr key={e.id}>
@@ -60,6 +77,13 @@ function EventsCard({ campaignId, edge }: { campaignId: number; edge: GraphEdge 
                 <td><code>{e.summary}</code></td>
                 <td className="break-all text-xs text-muted-foreground">{detailText(e)}</td>
                 <td className="tabular-nums">{e.count}</td>
+                <td>
+                  {e.kind === "auth" || e.kind === "control" || e.kind === "write" ? (
+                    e.finding_id
+                      ? <button className="linkish" title="Ver en Hallazgos" onClick={() => navigate(`/campaigns/${campaignId}/findings`)}>✓ creado</button>
+                      : <button disabled={busy === e.id} onClick={() => createFinding(e)} title="Crea un hallazgo en borrador con la evidencia de este evento">{busy === e.id ? "…" : "Crear hallazgo"}</button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>

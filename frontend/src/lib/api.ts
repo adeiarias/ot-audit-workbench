@@ -107,6 +107,7 @@ export interface FlowEvent {
   last_seen: string;
   secret: boolean;
   secret_kind: string;
+  finding_id: number | null; // hallazgo ya creado desde este evento (si lo hay)
 }
 
 export interface Graph {
@@ -359,6 +360,7 @@ export const api = {
   graph: (id: number) => req<Graph>(`/api/campaigns/${id}/graph`),
   flowEvents: (id: number, e: { src: string; dst: string; transport: string; port: number }) =>
     req<FlowEvent[]>(`/api/campaigns/${id}/events?${new URLSearchParams({ src: e.src, dst: e.dst, transport: e.transport, port: String(e.port) })}`),
+  findingFromEvent: (eventId: number) => req<Finding>(`/api/events/${eventId}/finding`, { method: "POST" }),
   findings: (id: number) => req<Finding[]>(`/api/campaigns/${id}/findings`),
   createFinding: (id: number, f: Partial<FindingInput>) =>
     req<Finding>(`/api/campaigns/${id}/findings`, { method: "POST", body: JSON.stringify(f) }),

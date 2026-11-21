@@ -103,3 +103,14 @@ def test_sdk_blocks_dump_to_replayable_dicts():
     assert out[0] == {"type": "thinking", "thinking": "", "signature": "sigX"}
     assert out[1] == {"type": "text", "text": "hola"}
     assert out[2]["type"] == "tool_use" and out[2]["input"] == {} and None not in out[2].values()
+
+
+def test_migration_adds_findings_source_key(tmp_path):
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as c:
+        c.execute("CREATE TABLE findings (id INTEGER PRIMARY KEY, name TEXT)")
+        c.execute("INSERT INTO findings VALUES (1, 'previo')")
+    eng = create_engine(f"sqlite:///{path}")
+    assert migrations.migrate(eng) == ["findings.source_key"]
+    with eng.connect() as conn:
+        assert conn.execute(text("SELECT name, source_key FROM findings")).one() == ("previo", "")  # conserva los hallazgos; sin origen automático

@@ -4,14 +4,14 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from .. import events, runs
+from .. import events, finding_drafts, runs
 from ..db import CAPTURES_ROOT, get_db
-from ..models import Asset, Campaign, Capture, Flow, FlowEvent, ToolRun
-from ..schemas import CaptureOut
+from ..models import Asset, Campaign, Capture, Finding, Flow, FlowEvent, ToolRun
+from ..schemas import CaptureOut, FindingOut
 from ..scope import is_special_address, target_in_scope
 from ..security import origin_allowed
 
@@ -153,13 +153,39 @@ def flow_events(campaign_id: int, src: str, dst: str, port: int, transport: str 
         select(FlowEvent).where(FlowEvent.campaign_id == campaign_id, FlowEvent.src_ip == src, FlowEvent.dst_ip == dst,
                                 FlowEvent.port == port, FlowEvent.transport == transport)
     ).all()
+    shas = {c.id: c.sha256 for c in db.scalars(select(Capture).where(Capture.campaign_id == campaign_id))}
+    made = {f.source_key: f.id for f in db.scalars(select(Finding).where(Finding.campaign_id == campaign_id, Finding.source_key != ""))}
     order = {"auth": 0, "control": 1, "write": 2, "request": 3, "response": 4}
     rows.sort(key=lambda e: (not e.secret, order.get(e.kind, 5), -e.count))
     return [
         {"id": e.id, "protocol": e.protocol, "direction": e.direction, "kind": e.kind, "summary": e.summary, "detail": e.detail,
-         "count": e.count, "first_seen": e.first_seen, "last_seen": e.last_seen, "secret": e.secret, "secret_kind": e.secret_kind}
+         "count": e.count, "first_seen": e.first_seen, "last_seen": e.last_seen, "secret": e.secret, "secret_kind": e.secret_kind,
+         "finding_id": made.get(finding_drafts.source_key(shas.get(e.capture_id, ""), e)) if e.kind in finding_drafts.DRAFTABLE_KINDS else None}
         for e in rows
     ]
+
+
+@router.post("/events/{event_id}/finding", response_model=FindingOut)
+def finding_from_event(event_id: int, response: Response, db: Session = Depends(get_db)):
+    """Crea un hallazgo en borrador a partir de un evento (credencial en claro, escritura o control). Idempotente: si ya existe, lo devuelve."""
+    event = db.get(FlowEvent, event_id)
+    if event is None:
+        raise HTTPException(404, "Evento no encontrado")
+    if event.kind not in finding_drafts.DRAFTABLE_KINDS:
+        raise HTTPException(422, "Solo se crean hallazgos desde credenciales en claro, escrituras y órdenes de control")
+    capture = db.get(Capture, event.capture_id)
+    key = finding_drafts.source_key(capture.sha256, event)
+    existing = db.scalar(select(Finding).where(Finding.campaign_id == event.campaign_id, Finding.source_key == key))
+    if existing is not None:
+        return existing  # 200: ya estaba creado
+    data = finding_drafts.build(db, event, capture)
+    finding = Finding(campaign_id=event.campaign_id, source_key=key, **{k: v for k, v in data.items() if k != "asset_ids"})
+    finding.assets = list(db.scalars(select(Asset).where(Asset.id.in_(data["asset_ids"])))) if data["asset_ids"] else []
+    db.add(finding)
+    db.commit()
+    events.publish(event.campaign_id, {"type": "changed"})
+    response.status_code = 201
+    return finding
 
 
 @router.websocket("/campaigns/{campaign_id}/ws")

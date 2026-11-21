@@ -191,6 +191,7 @@ class Finding(Base):
     impact: Mapped[str] = mapped_column(Text, default="")
     recommendations: Mapped[str] = mapped_column(Text, default="")
     affected_other: Mapped[str] = mapped_column(String(500), default="")  # activos sin IP (p. ej. "Vending Machine")
+    source_key: Mapped[str] = mapped_column(String(300), default="", index=False)  # origen automático (evento de captura): evita duplicados
     depends_on_id: Mapped[int | None] = mapped_column(ForeignKey("findings.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

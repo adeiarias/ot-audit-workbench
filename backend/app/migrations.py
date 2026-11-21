@@ -12,6 +12,7 @@ from sqlalchemy.engine import Engine
 COLUMNS = [
     ("campaigns", "llm_redaction", "ALTER TABLE campaigns ADD COLUMN llm_redaction BOOLEAN NOT NULL DEFAULT 1"),
     ("campaigns", "llm_profile_id", "ALTER TABLE campaigns ADD COLUMN llm_profile_id INTEGER REFERENCES llm_profiles(id) ON DELETE SET NULL"),
+    ("findings", "source_key", "ALTER TABLE findings ADD COLUMN source_key VARCHAR(300) NOT NULL DEFAULT ''"),
     ("chat_messages", "provider", "ALTER TABLE chat_messages ADD COLUMN provider VARCHAR(30) NOT NULL DEFAULT ''"),
 ]
 
